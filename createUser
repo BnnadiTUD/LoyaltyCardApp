@@ -1,0 +1,178 @@
+import com.opensymphony.xwork2.ActionSupport;
+import org.apache.struts2.interceptor.SessionAware;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.util.ArrayList;
+import java.util.Map;
+
+public class UserSession extends ActionSupport implements SessionAware {
+	private int userid;
+    private String username;
+    private String password;
+    private String email;
+    private int age;
+    private Map<String, Object> session;
+    private ArrayList<User> list = new ArrayList<>();
+
+    public String register() {
+        try (Connection connection = DriverManager.getConnection(
+                "jdbc:mysql://localhost:3306/ca2?serverTimezone=UTC", "root", "root");
+             PreparedStatement statement = connection.prepareStatement(
+                     "INSERT INTO Users (Username, Password, Email, Age) VALUES (?, ?, ?, ?)")) {
+
+            statement.setString(1, username);
+            statement.setString(2, password);
+            statement.setString(3, email);
+            statement.setInt(4, age);
+
+            int rowsInserted = statement.executeUpdate();
+            if (rowsInserted > 0) {
+                String username = (String) session.put("registeredUser", username);
+                String email = (String) session.put("registeredEmail", email);
+                int age = (int) session.put("registeredAge", age);
+                User list = new User(username, password, email, age);
+                
+                return "success";
+            } else {
+                return "error";
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "error";
+        }
+    }
+
+    public String login() {
+        try (Connection connection = DriverManager.getConnection(
+                "jdbc:mysql://localhost:3306/ca2?serverTimezone=UTC", "root", "root");
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT * FROM Users WHERE Username = ? AND Password = ?")) {
+
+            statement.setString(1, username);
+            statement.setString(2, password);
+
+            ResultSet resultSet = statement.executeQuery();
+            if (resultSet.next()) {
+                session.put("loggedInUser", username);
+                return "success";
+            } else {
+                return "error";
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "error";
+        }
+    }
+
+    public String logout() {
+        session.remove("loggedInUser");
+        return "success";
+    }
+    
+    public String viewProfile() {
+        String loggedInUser = (String) session.get("loggedInUser"); // Retrieve the username from session
+        if (loggedInUser == null) {
+            return "error";
+        }
+ 
+        try (Connection connection = DriverManager.getConnection(
+                "jdbc:mysql://localhost:3306/ca2?serverTimezone=UTC", "root", "root");
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT UserID, Username, Email, Age FROM Users WHERE Username = ?")) {
+
+            statement.setString(1, loggedInUser); // Use the logged-in username to query details
+
+            ResultSet resultSet = statement.executeQuery();
+            if (resultSet.next()) {
+               
+                // Store retrieved details in session for use in JSP
+                session.put("userId", resultSet.getInt("UserID"));
+                session.put("username", resultSet.getString("Username"));
+                session.put("email", resultSet.getString("Email"));
+                session.put("age", resultSet.getInt("Age"));
+                return "success";
+            } else {
+                return "error";
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "error";
+        }
+    }
+    
+    /** public String viewAllProfiles() {
+    	try (Connection connection = DriverManager.getConnection(
+                "jdbc:mysql://localhost:3306/ca2?serverTimezone=UTC", "root", "root");
+             PreparedStatement statement = connection.prepareStatement( "SELECT * FROM Users")) {
+		return "success";
+    	}	
+    }
+*/
+    @Override
+    public void setSession(Map map) {
+        session = map;
+    }
+    
+    class User {
+    	private String username, password, email;
+    	private int age;
+		private ArrayList<UserSession.User> list;
+
+    	public User() {
+    		this.username = " ";
+    		this.email = " ";
+    		this.age = 0;
+    	}
+
+    	public User (String username, String password, String email, int age) {
+    		this.username = username;
+    		this.password = password;
+    		this.email = email;
+    		this.age = age;
+    	}
+
+    // Getters and Setters
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public int getAge() {
+        return age;
+    }
+
+    public void setAge(int age) {
+        this.age = age;
+    }
+    
+    public ArrayList<User> getAllUsers() {
+        return list;
+    }
+
+    public void setAllUsernames(ArrayList<User> list) {
+        this.list = list;
+    }
+}
+}
