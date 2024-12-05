@@ -1,0 +1,514 @@
+import com.opensymphony.xwork2.ActionSupport;
+import org.apache.struts2.interceptor.SessionAware;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.util.ArrayList;
+import java.util.Map;
+
+public class UserSession extends ActionSupport implements SessionAware {
+    private int userid;
+    private String username;
+    private String password;
+    private String email;
+    private int age;
+    private int itemId;
+    private String itemName;
+    private String itemType;
+    private double price;
+    private int bidId;
+    private double bidAmount;
+    private int bidderId;
+    private Map<String, Object> session;
+    private ArrayList<Item> itemList = new ArrayList<>();
+    private ArrayList<User> userList = new ArrayList<>();
+    private ArrayList<Bid> bidList = new ArrayList<>();
+
+    public String register() {
+        try (Connection connection = DriverManager.getConnection(
+                "jdbc:mysql://localhost:3306/ca2?serverTimezone=UTC", "root", "root");
+             PreparedStatement statement = connection.prepareStatement(
+                     "INSERT INTO Users (Username, Password, Email, Age) VALUES (?, ?, ?, ?)")) {
+
+            statement.setString(1, username);
+            statement.setString(2, password);
+            statement.setString(3, email);
+            statement.setInt(4, age);
+
+            int rowsInserted = statement.executeUpdate();
+            if (rowsInserted > 0) {
+                session.put("registeredUser", username);
+                return "success";
+            } else {
+                return "error";
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "error";
+        }
+    }
+
+    public String login() {
+        try (Connection connection = DriverManager.getConnection(
+                "jdbc:mysql://localhost:3306/ca2?serverTimezone=UTC", "root", "root");
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT * FROM Users WHERE Username = ? AND Password = ?")) {
+
+            statement.setString(1, username);
+            statement.setString(2, password);
+
+            ResultSet resultSet = statement.executeQuery();
+            if (resultSet.next()) {
+                session.put("loggedInUser", username);
+                return "success";
+            } else {
+                return "error";
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "error";
+        }
+    }
+
+    public String logout() {
+        session.remove("loggedInUser");
+        return "success";
+    }
+
+    public String viewProfile() {
+        String loggedInUser = (String) session.get("loggedInUser"); // Retrieve the username from session
+        if (loggedInUser == null) {
+            return "error";
+        }
+
+        try (Connection connection = DriverManager.getConnection(
+                "jdbc:mysql://localhost:3306/ca2?serverTimezone=UTC", "root", "root");
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT UserID, Username, Email, Age FROM Users WHERE Username = ?")) {
+
+            statement.setString(1, loggedInUser); // Use the logged-in username to query details
+
+            ResultSet resultSet = statement.executeQuery();
+            if (resultSet.next()) {
+                // Store retrieved details in session for use in JSP
+                session.put("userId", resultSet.getInt("UserID"));
+                session.put("username", resultSet.getString("Username"));
+                session.put("email", resultSet.getString("Email"));
+                session.put("age", resultSet.getInt("Age"));
+                return "success";
+            } else {
+                return "error";
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "error";
+        }
+    }
+
+    public String viewAllProfiles() {
+        try (Connection connection = DriverManager.getConnection(
+                "jdbc:mysql://localhost:3306/ca2?serverTimezone=UTC", "root", "root");
+             PreparedStatement statement = connection.prepareStatement("SELECT UserID, Username, Email, Age FROM Users")) {
+
+            ResultSet resultSet = statement.executeQuery();
+            userList.clear(); // Clear the list to ensure no duplicates
+
+            while (resultSet.next()) {
+                int userId = resultSet.getInt("UserID");
+                String username = resultSet.getString("Username");
+                String email = resultSet.getString("Email");
+                int age = resultSet.getInt("Age");
+
+                // Add each user to the list
+                userList.add(new User(userId, username, null, email, age));
+            }
+
+            // Store the list in the session for JSP access
+            session.put("userList", userList);
+
+            return "success";
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "error";
+        }
+    }
+    
+    public String addItem() {
+        try (Connection connection = DriverManager.getConnection(
+                "jdbc:mysql://localhost:3306/ca2?serverTimezone=UTC", "root", "root");
+             PreparedStatement statement = connection.prepareStatement(
+                     "INSERT INTO Items (itemName, itemType, Price) VALUES (?, ?, ?)")) {
+
+            statement.setString(1, itemName);
+            statement.setString(2, itemType);
+            statement.setDouble(3, price);
+
+            int rowsInserted = statement.executeUpdate();
+            if (rowsInserted > 0) {
+                return "success";
+            } else {
+                return "error";
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "error";
+        }
+    }
+    
+    public String viewAllItems() {
+        try (Connection connection = DriverManager.getConnection(
+                "jdbc:mysql://localhost:3306/ca2?serverTimezone=UTC", "root", "root");
+             PreparedStatement statement = connection.prepareStatement("SELECT * FROM Items")) {
+
+            ResultSet resultSet = statement.executeQuery();
+            itemList.clear(); // Clear the list to ensure no duplicates
+
+            while (resultSet.next()) {
+                int itemId = resultSet.getInt("ItemID");
+                String itemName = resultSet.getString("ItemName");
+                String itemType = resultSet.getString("ItemType");
+                double price = resultSet.getDouble("Price");
+
+                // Add each user to the list
+                itemList.add(new Item(itemId, itemName, itemType, price));
+            } 
+ 
+            // Store the list in the session for JSP access
+            session.put("itemList", itemList);
+
+            return "success";
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "error";
+        }
+    }
+    
+    public String makeBid() {
+        String loggedInUser = (String) session.get("loggedInUser"); // Retrieve logged-in user
+        if (loggedInUser == null) {
+            addActionError("You must be logged in to place a bid.");
+            return "error";
+        }
+
+        try (Connection connection = DriverManager.getConnection(
+                "jdbc:mysql://localhost:3306/ca2?serverTimezone=UTC", "root", "root");
+             PreparedStatement getItemIdStatement = connection.prepareStatement(
+                     "SELECT ItemID FROM Items WHERE ItemName = ?");
+             PreparedStatement getBidderIdStatement = connection.prepareStatement(
+                     "SELECT UserID FROM Users WHERE Username = ?");
+             PreparedStatement insertBidStatement = connection.prepareStatement(
+                     "INSERT INTO Bids (ItemId, BidderId, BidAmount) VALUES (?, ?, ?)")) {
+
+            // Get the ItemID for the given itemName
+            getItemIdStatement.setString(1, itemName);
+            ResultSet itemResult = getItemIdStatement.executeQuery();
+            if (!itemResult.next()) {
+                return "error";
+            }
+            int itemId = itemResult.getInt("ItemID");
+
+            // Get the UserID for the logged-in user
+            getBidderIdStatement.setString(1, loggedInUser);
+            ResultSet userResult = getBidderIdStatement.executeQuery();
+            if (!userResult.next()) {
+                return "error";
+            }
+            int bidderId = userResult.getInt("UserID");
+
+            // Insert the bid into the Bids table
+            insertBidStatement.setInt(1, itemId);
+            insertBidStatement.setInt(2, bidderId);
+            insertBidStatement.setDouble(3, price);
+
+            int rowsInserted = insertBidStatement.executeUpdate();
+            if (rowsInserted > 0) {
+                return "success";
+            } else {
+                return "error";
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "error";
+        }
+    }
+
+    public String viewAllMyBids() {
+    	
+    	String loggedInUser = (String) session.get("loggedInUser"); // Retrieve logged-in user
+        if (loggedInUser == null) {
+            addActionError("You must be logged in to place a bid.");
+            return "error";
+        }
+        
+        try (Connection connection = DriverManager.getConnection(
+                "jdbc:mysql://localhost:3306/ca2?serverTimezone=UTC", "root", "root");
+             PreparedStatement statement = connection.prepareStatement("SELECT * FROM Bids WHERE BidderId = ?")) {
+
+            ResultSet resultSet = statement.executeQuery();
+            bidList.clear(); // Clear the list to ensure no duplicates
+
+            while (resultSet.next()) {
+            	 int bidId = resultSet.getInt("BidId");
+                int itemId = resultSet.getInt("ItemId");
+                int bidderID = resultSet.getInt("BidderId");
+                double bidAmount = resultSet.getDouble("BidAmount");
+
+                // Add each user to the list
+                bidList.add(new Bid(bidId, itemId, bidderId, bidAmount));
+            } 
+ 
+            // Store the list in the session for JSP access
+            session.put("bidList", bidList);
+
+            return "success";
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "error";
+        }
+    }
+
+    @Override
+    public void setSession(Map map) {
+        session = map;
+    }
+    
+    public String showAddItemForm() {
+        return "success";
+    }
+    
+    public String showMakeBidForm() {
+        return "success";
+    } 
+
+
+    // Getters and Setters
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public int getAge() {
+        return age;
+    }
+
+    public void setAge(int age) {
+        this.age = age;
+    }
+
+    public ArrayList<User> getUserList() {
+        return userList;
+    }
+
+    public void setUserList(ArrayList<User> userList) {
+        this.userList = userList;
+    }
+    
+    public String getItemName() { 
+    	return itemName; 
+    }
+    
+    public void setItemName(String itemName) { 
+    	this.itemName = itemName; 
+    }
+
+    public String getItemType() { 
+    	return itemType; 
+    }
+    
+    public void setItemType(String itemType) { 
+    	this.itemType = itemType; 
+    }
+
+    public double getPrice() { 
+    	return price; 
+    }
+    
+    public void setPrice(double price) { 
+    	this.price = price; 
+    }
+    
+    public ArrayList<Item> getItemrList() {
+        return itemList;
+    }
+
+    public void setItemList(ArrayList<Item> itemList) {
+        this.itemList = itemList;
+    }
+    
+    public ArrayList<Bid> getBidList() {
+        return bidList;
+    }
+
+    public void setBidList(ArrayList<Bid> bidList) {
+        this.bidList = bidList;
+    }
+
+
+    class User {
+        private int userId;
+        private String username, password, email;
+        private int age;
+
+        public User(int userId, String username, String password, String email, int age) {
+            this.userId = userId;
+            this.username = username;
+            this.password = password;
+            this.email = email;
+            this.age = age;
+        }
+
+        // Getters and Setters
+        public int getUserId() {
+            return userId;
+        }
+
+        public void setUserId(int userId) {
+            this.userId = userId;
+        }
+
+        public String getUsername() {
+            return username;
+        }
+
+        public void setUsername(String username) {
+            this.username = username;
+        }
+
+        public String getPassword() {
+            return password;
+        }
+
+        public void setPassword(String password) {
+            this.password = password;
+        }
+
+        public String getEmail() {
+            return email;
+        }
+
+        public void setEmail(String email) {
+            this.email = email;
+        }
+
+        public int getAge() {
+            return age;
+        }
+
+        public void setAge(int age) {
+            this.age = age;
+        }
+    }
+        
+        class Item {
+         private int itemID;
+            private String itemName, itemType;
+            private double price;
+
+            public Item(int itemID, String itemName, String itemType, double price) {
+            	this.itemID = itemID;
+                this.itemType = itemType;
+                this.itemName = itemName;
+                this.price = price;
+            }
+            
+            public int getItemID() {
+                return itemID;
+            }
+
+            public void setItemID(int itemID) {
+                this.itemID = itemID;
+            }
+
+            public String getItemName() {
+                return itemName;
+            }
+
+            public void setItemName(String itemName) {
+                this.itemName = itemName;
+            }
+
+            public String getItemType() {
+                return itemType;
+            }
+
+            public void setItemType(String itemType) {
+                this.itemType = itemType;
+            }
+
+            public double getPrice() {
+                return price;
+            }
+
+            public void setPrice(double price) {
+                this.price = price;
+            }
+
+        }
+        
+        class Bid {
+            private int bidID, itemID, bidderID;
+               private double bidAmount;
+
+               public Bid(int bidID, int itemID, int bidderID, double bidAmount) {
+               	this.bidID = bidID;
+                   this.itemID = itemID;
+                   this.bidderID = bidderID;
+                   this.bidAmount = bidAmount;
+               }
+
+			public int getBidID() {
+				return bidID;
+			}
+
+			public void setBidID(int bidID) {
+				this.bidID = bidID;
+			}
+
+			public int getItemID() {
+				return itemID;
+			}
+
+			public void setItemID(int itemID) {
+				this.itemID = itemID;
+			}
+
+			public int getBidderID() {
+				return bidderID;
+			}
+
+			public void setBidderID(int bidderID) {
+				this.bidderID = bidderID;
+			}
+
+			public double getBidAmount() {
+				return bidAmount;
+			}
+
+			public void setBidAmount(double bidAmount) {
+				this.bidAmount = bidAmount;
+			}
+        }
+              
+}
